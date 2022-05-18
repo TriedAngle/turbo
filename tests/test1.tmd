@@ -1,0 +1,32 @@
+# __Test__
+Hello this *is* a ***test***
+Water is H_2_O with the ions: H_3_O^+^ and HO^-^
+and here we are at the next line
+
+---
+
+hello this is new text\
+and the next line is a new line
+
+## Some *Features*\
+owo uwu
+:::rust
+pub fn main() {
+    println!("Hello World");
+}
+:::
+
+### Lists
+- [ ] list item 1
+  -
+    testing the functionality
+    yes please work
+  - [x] write working code
+-
+  list item 2\
+  more text
+  and another of text
+
+  and a new region
+
+- [x] list item 3

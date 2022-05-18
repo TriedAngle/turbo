@@ -1,5 +1,59 @@
-use crate::{Code, Lang, ListKind, Turbo, TurboInlineRaw, TurboTextMod};
+use crate::{Code, Lang, ListKind, TurboTextMod};
 use chumsky::prelude::*;
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum Turbo {
+    Root(Vec<Turbo>),
+    Header {
+        ident: usize,
+        size: usize,
+        text: TurboTextRaw,
+    },
+    Horizontal {
+        ident: usize,
+    },
+    Empty,
+    Line {
+        ident: usize,
+        text: TurboTextRaw,
+    },
+    ListElemStart {
+        ident: usize,
+        kind: ListKind,
+        check: Option<bool>,
+        content: Vec<Turbo>,
+    },
+    Code {
+        ident: Option<usize>,
+        code: Code,
+    },
+    Include {
+        ident: usize,
+        path: String,
+    },
+}
+
+impl Turbo {
+    pub fn line(&self) -> Option<(&usize, &TurboTextRaw)> {
+        match self {
+            Turbo::Line { ident, text } => Some((ident, text)),
+            _ => None,
+        }
+    }
+}
+
+pub type TurboTextRaw = Vec<TurboInlineRaw>;
+
+#[derive(Debug, Clone, PartialEq, Hash)]
+pub enum TurboInlineRaw {
+    NewLine,
+    ModFlag(TurboTextMod),
+    Link {
+        alias: Option<String>,
+        address: String,
+    },
+    Text(String),
+}
 
 pub fn parser() -> impl Parser<char, Turbo, Error = Simple<char>> {
     let plain_text = filter(|c| {
@@ -8,6 +62,8 @@ pub fn parser() -> impl Parser<char, Turbo, Error = Simple<char>> {
             && *c != '_'
             && *c != '~'
             && *c != '`'
+            && *c != '|'
+            && *c != '^'
             && *c != '['
             && *c != '\n'
             && *c != '\\'
@@ -34,8 +90,11 @@ pub fn parser() -> impl Parser<char, Turbo, Error = Simple<char>> {
         });
 
     let text_modifier = choice((
+        just('*').repeated().exactly(2).to(TurboTextMod::Cursive),
+        just('_').repeated().exactly(2).to(TurboTextMod::Underline),
         just('*').to(TurboTextMod::Bold),
-        just('_').to(TurboTextMod::Cursive),
+        just('^').to(TurboTextMod::Sup),
+        just('_').to(TurboTextMod::Sub),
         just('~').to(TurboTextMod::Strike),
         just('`').to(TurboTextMod::Code),
     ))
@@ -47,7 +106,7 @@ pub fn parser() -> impl Parser<char, Turbo, Error = Simple<char>> {
         .then_ignore(just('}'));
 
     let backslash = just('\\')
-        .ignore_then(one_of("*_~`-[\\"))
+        .ignore_then(any())
         .map(|val| TurboInlineRaw::Text(val.to_string()));
 
     let new_line = just('\\').then(just('\n')).to(TurboInlineRaw::NewLine);
@@ -66,11 +125,11 @@ pub fn parser() -> impl Parser<char, Turbo, Error = Simple<char>> {
         .map(|(alias, address)| TurboInlineRaw::Link { alias, address });
 
     let inline = choice((
+        new_line,
         backslash,
         backslash_extended,
         link,
         text_modifier,
-        new_line,
         plain_text,
     ));
 
@@ -94,21 +153,22 @@ pub fn parser() -> impl Parser<char, Turbo, Error = Simple<char>> {
         .then(header_tag.then(text_line.clone()))
         .map(|(ident, (size, text))| Turbo::Header { ident, size, text });
 
-    let hr = just('-')
-        .repeated()
-        .at_least(3)
-        .ignore_then(just('\n'))
-        .to(Turbo::Horizontal);
+    let hr = whitespace
+        .clone()
+        .then(just('-').repeated().at_least(3).ignore_then(just('\n')))
+        .map(|(ident, _)| Turbo::Horizontal { ident });
 
     let empty = just('\n').to(Turbo::Empty);
 
     let list_tag = choice((
-        just('-').then(just(' ').or_not()).to(ListKind::Unordered),
+        just('-')
+            .then(just(' ').or_not())
+            .to(ListKind::Unordered(None)),
         just('-')
             .ignore_then(just(' ').or_not())
             .ignore_then(number)
             .then_ignore(just(' ').or_not())
-            .map(ListKind::Ordered),
+            .to(ListKind::Numbered),
     ));
 
     let check = choice((just('x'), just(' ')))

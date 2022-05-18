@@ -1,81 +1,45 @@
-use crate::parser::parser;
+use crate::parser::{parser, Turbo};
 use chumsky::{error::Simple, Parser};
 use std::fs;
 
 mod ast;
+mod html;
 mod parser;
+
 use std::fmt;
 
 pub use ast::TurboTree;
-
-#[derive(Debug, Clone, PartialEq)]
-pub enum Turbo {
-    Root(Vec<Turbo>),
-    Header {
-        ident: usize,
-        size: usize,
-        text: TurboTextRaw,
-    },
-    Horizontal,
-    Empty,
-    Line {
-        ident: usize,
-        text: TurboTextRaw,
-    },
-    ListElemStart {
-        ident: usize,
-        kind: ListKind,
-        check: Option<bool>,
-        content: Vec<Turbo>,
-    },
-    Code {
-        ident: Option<usize>,
-        code: Code,
-    },
-    Include {
-        ident: usize,
-        path: String,
-    },
-}
-
-pub type TurboTextRaw = Vec<TurboInlineRaw>;
-
-#[derive(Debug, Clone, PartialEq, Hash)]
-pub enum TurboInlineRaw {
-    NewLine,
-    ModFlag(TurboTextMod),
-    Link {
-        alias: Option<String>,
-        address: String,
-    },
-    Text(String),
-}
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
 pub enum TurboTextMod {
     Bold,
     Cursive,
     Strike,
+    Underline,
     Code,
+    Sup,
+    Sub,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum ListKind {
-    Ordered(isize),
-    Unordered,
-    Roman,
-    None,
-    Custom(Vec<String>),
+    Numbered,
+    AlphabetUpper,
+    AlphabetLower,
+    RomanUpper,
+    RomanLower,
+    Unordered(Option<usize>),
 }
 
 impl fmt::Display for ListKind {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let s = match self {
-            ListKind::Ordered(idx) => format!("Ordered: {idx}"),
-            ListKind::Unordered => "Unordered".to_string(),
-            ListKind::Roman => "Roman".to_string(),
-            ListKind::None => "None".to_string(),
-            ListKind::Custom(tags) => format!("Custom: {:?}", tags)
+            ListKind::Numbered => "Unordered".to_string(),
+            ListKind::AlphabetUpper => "Alphabet Upper".to_string(),
+            ListKind::AlphabetLower => "Alphabet Lower".to_string(),
+            ListKind::RomanUpper => "Roman Upper".to_string(),
+            ListKind::RomanLower => "Roman Lower".to_string(),
+            ListKind::Unordered(_) => "Unordered".to_string(),
         };
         write!(f, "{}", s)
     }
@@ -97,15 +61,6 @@ pub enum Lang {
     C,
     CPP,
     Other(String),
-}
-
-impl Turbo {
-    fn line(&self) -> Option<(&usize, &TurboTextRaw)> {
-        match self {
-            Turbo::Line { ident, text } => Some((ident, text)),
-            _ => None,
-        }
-    }
 }
 
 pub fn parse_file(path: &str) -> Turbo {
@@ -162,6 +117,21 @@ impl From<&str> for Lang {
             _ => Other(value.to_string()),
         };
         res
+    }
+}
+
+impl Lang {
+    pub fn as_str(&self) -> &str {
+        return match self {
+            Lang::Turbo => "turbo",
+            Lang::KaTeX => "katex",
+            Lang::Rust => "rust",
+            Lang::Nim => "nim",
+            Lang::Python => "python",
+            Lang::C => "c",
+            Lang::CPP => "cpp",
+            Lang::Other(s) => s.as_str(),
+        };
     }
 }
 

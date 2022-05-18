@@ -1,5 +1,5 @@
-use crate::{Code, ListKind, Turbo, TurboInlineRaw, TurboTextMod, TurboTextRaw};
-use chumsky::prelude::*;
+use crate::parser::{Turbo, TurboInlineRaw, TurboTextRaw};
+use crate::{Code, ListKind, TurboTextMod};
 use std::collections::HashSet;
 use std::fmt;
 
@@ -18,7 +18,9 @@ pub enum TurboTree {
         items: Vec<TurboTree>,
     },
     ListItem {
+        id: usize,
         check: Option<bool>,
+        label: Box<Option<TurboTree>>,
         items: Vec<TurboTree>,
     },
     Code(Code),
@@ -43,13 +45,6 @@ pub enum TurboText {
 }
 
 impl TurboTree {
-    fn root(&mut self) -> &mut Vec<TurboTree> {
-        match self {
-            TurboTree::Root { content } => (content),
-            _ => panic!("illegal call"),
-        }
-    }
-
     fn is_list_item(&self) -> bool {
         match self {
             TurboTree::ListItem { .. } => true,
@@ -74,14 +69,12 @@ impl TurboTree {
         let root = parse.root();
         let mut idx = 0;
         while idx < root.len() {
-            let (next_idx, next) = generate_recursive(root, idx, 0, None);
+            let (next_idx, next) = generate_recursive(root, idx, 0, None, &mut IdSerial { id: 0 });
             content.push(next.unwrap());
             idx = next_idx;
         }
 
-        let tree = TurboTree::Root {
-            content,
-        };
+        let tree = TurboTree::Root { content };
         tree
     }
 
@@ -90,7 +83,7 @@ impl TurboTree {
             TurboTree::Root { content, .. } => content,
             TurboTree::List { items, .. } => items,
             TurboTree::ListItem { items, .. } => items,
-            _ => panic!("Illegal Call")
+            _ => panic!("Illegal Call"),
         }
     }
 }
@@ -101,11 +94,16 @@ pub struct ListSetting {
     pub nesting_counter: usize,
 }
 
+struct IdSerial {
+    pub id: usize,
+}
+
 fn generate_recursive(
     turbo: &Vec<Turbo>,
     mut current: usize,
     current_ident: usize,
     list_setting: Option<ListSetting>,
+    id_serial: &mut IdSerial,
 ) -> (usize, Option<TurboTree>) {
     let item = match &turbo[current] {
         Turbo::Header { ident, size, text } => {
@@ -120,7 +118,14 @@ fn generate_recursive(
                 text: turbo_text(text),
             }
         }
-        Turbo::Horizontal => TurboTree::Horizontal,
+        Turbo::Horizontal { ident } => {
+            if list_setting.is_some() {
+                if *ident <= current_ident {
+                    return (current, None);
+                }
+            }
+            TurboTree::Horizontal
+        }
 
         Turbo::Empty => TurboTree::Empty,
         Turbo::Line { ident, text } => {
@@ -169,8 +174,7 @@ fn generate_recursive(
             }
             let mut items = vec![];
 
-            let (_, item) = generate_recursive(content, 0, 0, None);
-            items.push(item.unwrap());
+            let (_, label) = generate_recursive(content, 0, 0, None, id_serial);
 
             let nc = if let Some(setting) = &list_setting {
                 if *ident == current_ident && &setting.kind == kind {
@@ -178,7 +182,9 @@ fn generate_recursive(
                 } else {
                     0
                 }
-            } else { 0 };
+            } else {
+                0
+            };
 
             let mut idx = current + 1;
             while idx < turbo.len() {
@@ -186,7 +192,11 @@ fn generate_recursive(
                     turbo,
                     idx,
                     *ident,
-                    Some(ListSetting { kind: kind.clone(), nesting_counter: nc + 1}),
+                    Some(ListSetting {
+                        kind: kind.clone(),
+                        nesting_counter: nc + 1,
+                    }),
+                    id_serial,
                 );
                 if let Some(next) = next {
                     items.push(next);
@@ -197,22 +207,44 @@ fn generate_recursive(
             }
 
             current = idx;
+            id_serial.id += 1;
 
             if let Some(_) = &list_setting {
                 if *ident == current_ident {
-                    return (current, Some(TurboTree::ListItem {check: *check, items}))
+                    return (
+                        current,
+                        Some(TurboTree::ListItem {
+                            id: id_serial.id,
+                            check: *check,
+                            label: Box::new(label),
+                            items,
+                        }),
+                    );
                 }
             }
 
             let mut split_index = 0;
             for item in &items {
-                if item.is_list_item() { break; }
+                if item.is_list_item() {
+                    break;
+                }
                 split_index += 1;
             }
             let mut rest = items.split_off(split_index);
-            let list_item = TurboTree::ListItem { check: *check, items };
+            let list_item = TurboTree::ListItem {
+                id: id_serial.id,
+                check: *check,
+                label: Box::new(label),
+                items,
+            };
             rest.insert(0, list_item);
-            return (current, Some(TurboTree::List {kind: kind.clone(), items: rest}))
+            return (
+                current,
+                Some(TurboTree::List {
+                    kind: kind.clone(),
+                    items: rest,
+                }),
+            );
         }
 
         Turbo::Code { ident, code } => {
@@ -294,7 +326,6 @@ fn turbo_text_recursive(
     current
 }
 
-
 impl fmt::Display for TurboTree {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         writeln!(f, "{}", self.pretty_string(0))
@@ -304,7 +335,7 @@ impl fmt::Display for TurboTree {
 impl TurboTree {
     pub fn pretty_string(&self, level: usize) -> String {
         let mut buffer = String::new();
-        let whitespace = |level: usize| (0..level * 2).map(|val| ' ').collect::<String>();
+        let whitespace = |level: usize| (0..level * 2).map(|_| ' ').collect::<String>();
         match self {
             TurboTree::Root { content } => {
                 buffer.push_str(&whitespace(level));
@@ -336,10 +367,21 @@ impl TurboTree {
                     buffer.push_str(&item.pretty_string(level + 2));
                 }
             }
-            TurboTree::ListItem { check, items } => {
+            TurboTree::ListItem {
+                id,
+                check,
+                label: check_label,
+                items,
+            } => {
                 buffer.push_str(&whitespace(level));
                 buffer.push_str("List Item:\n");
+                buffer.push_str(&format!("{}id: {}\n", whitespace(level + 1), id));
                 buffer.push_str(&format!("{}check: {:?}\n", whitespace(level + 1), check));
+                buffer.push_str(&format!(
+                    "{}check: {:?}\n",
+                    whitespace(level + 1),
+                    check_label
+                ));
                 buffer.push_str(&format!("{}items:\n", whitespace(level + 1)));
                 for item in items {
                     buffer.push_str(&item.pretty_string(level + 2))
