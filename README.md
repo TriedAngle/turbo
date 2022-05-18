@@ -74,3 +74,8 @@ All of these can be nested.
 - Grid-like layouting
 - Videos
 - Variables (Markdown like and References, similar to BibTeX)
+
+## Other:
+- Better Default Styling
+- Error Handling
+- Sandboxed Code Execution and Output
