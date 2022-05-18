@@ -9,6 +9,7 @@ mod parser;
 use std::fmt;
 
 pub use ast::TurboTree;
+pub use html::HtmlDefaults;
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
 pub enum TurboTextMod {
@@ -55,6 +56,7 @@ pub struct Code {
 pub enum Lang {
     Turbo,
     KaTeX,
+    Mermaid,
     Rust,
     Nim,
     Python,
@@ -108,6 +110,7 @@ impl From<&str> for Lang {
             "turbo" => Turbo,
             "katex" => KaTeX,
             "math" => KaTeX,
+            "mermaid" => Mermaid,
             "rust" => Rust,
             "nim" => Nim,
             "python" => Python,
@@ -125,11 +128,12 @@ impl Lang {
         return match self {
             Lang::Turbo => "turbo",
             Lang::KaTeX => "katex",
-            Lang::Rust => "rust",
-            Lang::Nim => "nim",
-            Lang::Python => "python",
-            Lang::C => "c",
-            Lang::CPP => "cpp",
+            Lang::Rust => "language-rust",
+            Lang::Nim => "language-nim",
+            Lang::Python => "language-python",
+            Lang::Mermaid => "mermaid",
+            Lang::C => "language-c",
+            Lang::CPP => "language-cpp",
             Lang::Other(s) => s.as_str(),
         };
     }

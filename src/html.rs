@@ -1,13 +1,39 @@
 use crate::ast::TurboText;
-use crate::{ListKind, TurboTextMod, TurboTree};
+use crate::{Lang, ListKind, TurboTextMod, TurboTree};
+
+pub struct HtmlDefaults {
+    pub title: String,
+    pub default_html: String,
+}
 
 impl TurboTree {
+    pub fn generate_html(&self, defaults: Option<HtmlDefaults>) -> String {
+        let mut result = String::new();
+        match self {
+            TurboTree::Root { content } => {
+                if let Some(defaults) = &defaults {
+                    result.push_str("<!DOCTYPE html>\n<html>\n<head>\n");
+                    result.push_str(&format!("<title>{}</title>\n", defaults.title));
+                    result.push_str(&defaults.default_html);
+                    result.push_str("</head>\n<body>\n");
+                }
+                content
+                    .iter()
+                    .for_each(|node| result.push_str(&node.to_html()));
+
+                if let Some(_) = &defaults {
+                    result.push_str("</body>\n</html>\n<");
+                }
+
+            }
+            _ => panic!("must be root")
+        }
+        result
+    }
     pub fn to_html(&self) -> String {
         let mut result = String::new();
         match self {
-            TurboTree::Root { content } => content
-                .iter()
-                .for_each(|node| result.push_str(&node.to_html())),
+            TurboTree::Root { .. } => { panic!("Shouldn't be callable here")},
             TurboTree::Text(text) => {
                 result.push_str("<p>");
                 result.push_str(&text.to_html());
@@ -85,13 +111,28 @@ impl TurboTree {
                 result.push_str("</li>\n")
             }
             TurboTree::Code(code) => {
-                result.push_str("<pre>");
-                result.push_str(&format!(
-                    "<code class=\"language-{}\">\n",
-                    code.lang.as_str()
-                ));
-                result.push_str(&format!("{}", &code.code));
-                result.push_str("</code></pre>\n");
+                match code.lang {
+                    Lang::KaTeX => {
+                        result.push_str("<div class=\"katex\">\n$$\n");
+                        result.push_str(&code.code);
+                        result.push_str("$$\n</div>\n");
+                    }
+                    Lang::Mermaid => {
+                        result.push_str("<div class=\"mermaid\">\n");
+                        result.push_str(&code.code);
+                        result.push_str("</div>\n");
+                    }
+                    Lang::Other(_) => {}
+                    _ => {
+                        result.push_str("<pre>");
+                        result.push_str(&format!(
+                            "<code class=\"{}\">\n",
+                            code.lang.as_str()
+                        ));
+                        result.push_str(&format!("{}", &code.code));
+                        result.push_str("</code></pre>\n");
+                    }
+                }
             }
             TurboTree::Horizontal => result.push_str("<hr/>\n"),
             TurboTree::Empty => {}

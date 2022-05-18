@@ -4,7 +4,6 @@ Water is H_2_O with the ions: H_3_O^+^ and HO^-^
 and here we are at the next line
 
 ---
-
 hello this is new text\
 and the next line is a new line
 
@@ -14,6 +13,17 @@ owo uwu
 pub fn main() {
     println!("Hello World");
 }
+:::
+---
+:::mermaid
+    graph LR
+    A --- B
+    B-->C[fa:fa-ban forbidden]
+    B-->D(fa:fa-spinner);
+:::
+---
+:::math
+    f(a,b,c)_\alpha = (a^2+b^2+c^2)^3 + \alpha
 :::
 
 ### Lists
